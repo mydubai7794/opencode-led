@@ -227,32 +227,9 @@ python3 -m http.server 8080
 # 浏览器打开 http://localhost:8080
 ```
 
-### 方式二：PlatformIO CLI（推荐，命令行）
+### 方式二：Arduino IDE
 
-1. **安装 PlatformIO**：
-   ```bash
-   pip install platformio
-   ```
-
-2. **编译**：
-   ```bash
-   cd firmware
-   pio run                        # 编译全部（ESP32 + ESP8266）
-   pio run -e esp32               # 仅编译 ESP32
-   pio run -e esp8266             # 仅编译 ESP8266
-   ```
-
-3. **烧录**：
-   ```bash
-   pio run -e esp32 -t upload     # 烧录 ESP32
-   pio run -e esp8266 -t upload   # 烧录 ESP8266
-   ```
-
-4. **编译产物路径**：
-   - ESP32：`firmware/.pio/build/esp32/firmware.bin`
-   - ESP8266：`firmware/.pio/build/esp8266/firmware.bin`
-
-### 方式三：Arduino IDE
+> PlatformIO CLI (`pip install platformio`) 仅用于**编译生成 .bin**，烧录请使用 Web Flasher 或 Arduino IDE。PlatformIO 的 `upload` 命令对 ESP32-C3 不可靠。
 
 1. **安装 ESP32 支持**（一次性）：
    - Arduino IDE → 文件 → 首选项 → 附加开发板管理器 URL，添加：
