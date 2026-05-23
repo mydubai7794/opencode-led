@@ -6,6 +6,7 @@
 #define CONFIG_VALID   0xA5
 #define PWM_RANGE      1023
 #define PWM_FREQ       1000
+#define MSG_TIMEOUT    180000
 
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
@@ -187,6 +188,9 @@ void updateLED() {
   } else if (strcmp(currentState, "config") == 0) {
     doneActive = false;
     breathLED(800);
+  } else if (strcmp(currentState, "off") == 0) {
+    doneActive = false;
+    setAllLEDs(0);
   } else {
     doneActive = false;
     setAllLEDs(0);
@@ -336,5 +340,9 @@ void loop() {
     reconnectMQTT();
   }
   mqtt.loop();
+  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT && strcmp(currentState, "off") != 0) {
+    setState("off");
+    Serial.println("[AI-LED] No MQTT message for 3min, LED off");
+  }
   updateLED();
 }

@@ -4,6 +4,7 @@
 #define BUTTON_ENABLED false
 #define EEPROM_SIZE 512
 #define CONFIG_VALID 0xA5
+#define MSG_TIMEOUT 180000
 
 #include <WiFi.h>
 #include <DNSServer.h>
@@ -161,6 +162,9 @@ void updateLED() {
     blinkLED(255, 0, 0, 1600);
   } else if (strcmp(currentState, "config") == 0) {
     breathLED(128, 0, 255, 800);
+  } else if (strcmp(currentState, "off") == 0) {
+    setAllPixels(0, 0, 0);
+    strip.show();
   } else {
     solidLED(0, 0, 0);
   }
@@ -352,5 +356,9 @@ void loop() {
     reconnectMQTT();
   }
   mqtt.loop();
+  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT && strcmp(currentState, "off") != 0) {
+    setState("off");
+    Serial.println("[AI-LED] No MQTT message for 3min, LED off");
+  }
   updateLED();
 }
