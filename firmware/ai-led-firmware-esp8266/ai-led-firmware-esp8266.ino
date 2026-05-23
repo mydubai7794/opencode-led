@@ -340,9 +340,11 @@ void loop() {
     reconnectMQTT();
   }
   mqtt.loop();
-  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT && strcmp(currentState, "off") != 0) {
-    setState("off");
-    Serial.println("[AI-LED] No MQTT message for 3min, LED off");
+  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
+    if (strcmp(currentState, "idle") == 0 && strcmp(currentState, "off") != 0) {
+      setState("off");
+      Serial.println("[AI-LED] Idle for 3min, LED off");
+    }
   }
   updateLED();
 }
