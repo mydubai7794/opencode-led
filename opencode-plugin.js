@@ -17,6 +17,7 @@ let debounceTimer = null;
 let msgCount = 0;
 let lastWinnerState = "";
 let isSessionActive = false;
+let pendingDoneTimer = null;
 let suppressThinkingUntil = 0;
 const projectStates = new Map();
 
@@ -26,7 +27,8 @@ const LOG_FILE = path.join(os.tmpdir(), "ai-led-events.log");
 const DONE_TIMEOUT = 10_000;
 const IDLE_TIMEOUT = 60_000;
 const DEBOUNCE_MS = 300;
-const SUPPRESS_MS = 2000;
+const PENDING_DONE_MS = 1000;
+const SUPPRESS_MS = 3000;
 const BROKER_PORT = 1883;
 const PROJECT_ID = crypto.createHash("sha256").update(process.cwd()).digest("hex").slice(0, 8);
 
@@ -171,11 +173,17 @@ function handleProjectMessage(topic, message) {
   }
 }
 
+function cancelPendingDone() {
+  clearTimeout(pendingDoneTimer);
+  pendingDoneTimer = null;
+}
+
 function markThinking(eventDetail) {
   if (Date.now() < suppressThinkingUntil) {
     log(`[suppressed] ${eventDetail}`);
     return;
   }
+  cancelPendingDone();
   clearTimeout(doneTimer);
   isSessionActive = true;
   if (debounceTimer) return;
@@ -187,6 +195,7 @@ function cleanup() {
   clearTimeout(idleTimer);
   clearTimeout(doneTimer);
   clearTimeout(debounceTimer);
+  clearTimeout(pendingDoneTimer);
   isSessionActive = false;
   if (client) {
     client.unsubscribe(PROJECT_TOPIC);
@@ -231,6 +240,7 @@ export const AiLedPlugin = async () => {
           markThinking("session.diff");
           break;
         case "tool.execute.before":
+          cancelPendingDone();
           clearTimeout(doneTimer);
           isSessionActive = true;
           suppressThinkingUntil = 0;
@@ -240,6 +250,7 @@ export const AiLedPlugin = async () => {
           markThinking(`tool.execute.after:${event.data?.tool || "?"}`);
           break;
         case "permission.asked":
+          cancelPendingDone();
           clearTimeout(doneTimer);
           isSessionActive = true;
           suppressThinkingUntil = 0;
@@ -249,6 +260,7 @@ export const AiLedPlugin = async () => {
           markThinking("permission.replied");
           break;
         case "question.asked":
+          cancelPendingDone();
           clearTimeout(doneTimer);
           isSessionActive = true;
           suppressThinkingUntil = 0;
@@ -261,11 +273,16 @@ export const AiLedPlugin = async () => {
           if (isSessionActive) {
             isSessionActive = false;
             clearTimeout(doneTimer);
+            cancelPendingDone();
             suppressThinkingUntil = Date.now() + SUPPRESS_MS;
-            publishProject("done", "session.idle");
+            pendingDoneTimer = setTimeout(() => {
+              pendingDoneTimer = null;
+              publishProject("done", "session.idle");
+            }, PENDING_DONE_MS);
           }
           break;
         case "session.error":
+          cancelPendingDone();
           clearTimeout(doneTimer);
           isSessionActive = false;
           suppressThinkingUntil = 0;
@@ -277,6 +294,7 @@ export const AiLedPlugin = async () => {
           doneTimer = setTimeout(() => {
             if (isSessionActive) {
               isSessionActive = false;
+              cancelPendingDone();
               publishProject("done", "no-event timeout");
             }
           }, DONE_TIMEOUT);
