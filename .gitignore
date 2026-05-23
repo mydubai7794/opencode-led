@@ -1,0 +1,7 @@
+node_modules/
+*.pid
+*.log
+.DS_Store
+flasher/ssl/
+docs/superpowers/
+AGENTS.md

@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI LED - Web Flasher</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f23;color:#e0e0e0;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.card{background:#16213e;border-radius:16px;padding:32px;width:90%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+h1{text-align:center;margin-bottom:24px}
+.step{display:flex;gap:16px;margin-bottom:20px;align-items:flex-start}
+.step-num{background:#2196f3;color:#fff;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+.step-body{flex:1}
+.step-body h3{margin-bottom:4px}
+.step-body p{color:#888;font-size:14px;line-height:1.5}
+.btn{display:block;width:100%;padding:16px;border:none;border-radius:12px;font-size:18px;font-weight:600;cursor:pointer;margin:16px 0;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,#4fc3f7,#2196f3);color:#fff}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(33,150,243,.4)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.progress{background:#1a1a2e;border-radius:8px;height:24px;overflow:hidden;margin:16px 0}
+.progress-bar{height:100%;background:linear-gradient(90deg,#4fc3f7,#2196f3);width:0%;transition:width .3s}
+.log{background:#0a0a1a;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;max-height:200px;overflow-y:auto;color:#666;white-space:pre-wrap;margin:16px 0}
+.status{text-align:center;padding:16px;border-radius:8px;margin:16px 0}
+.status.success{background:#1b5e20;color:#a5d6a7}
+.status.error{background:#b71c1c;color:#ef9a9a}
+.warn{background:#1a1a2e;border-left:3px solid #ff9800;padding:12px;border-radius:4px;font-size:13px;color:#bbb;margin:16px 0;line-height:1.5}
+a{color:#4fc3f7}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>&#x1F4A1; AI LED Firmware Flasher</h1>
+
+<div class="step">
+  <div class="step-num">1</div>
+  <div class="step-body">
+    <h3>连接开发板</h3>
+    <p>用 USB 数据线将 ESP8266 / ESP32 开发板连接到电脑</p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">2</div>
+  <div class="step-body">
+    <h3>选择固件</h3>
+    <p>选择对应的芯片型号，点击下方按钮烧录</p>
+    <p style="margin-top:8px">
+      <label style="font-size:14px;color:#aaa">开发板型号:
+        <select id="board" style="margin-left:8px;padding:4px 8px;background:#0f0f23;color:#fff;border:1px solid #333;border-radius:4px">
+          <option value="esp32c3" selected>ESP32-C3</option>
+          <option value="esp8266">ESP8266 (NodeMCU / Wemos D1)</option>
+          <option value="esp32">ESP32 (经典款)</option>
+          <option value="esp32s2">ESP32-S2</option>
+          <option value="esp32s3">ESP32-S3</option>
+        </select>
+      </label>
+    </p>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-num">3</div>
+  <div class="step-body">
+    <h3>烧录</h3>
+    <p>浏览器会弹出串口选择窗口，选择开发板对应的串口</p>
+  </div>
+</div>
+
+<button class="btn btn-primary" id="flashBtn" onclick="startFlash()">
+  &#x1F517; 连接串口并烧录
+</button>
+
+<button class="btn" id="resetBtn" style="background:linear-gradient(135deg,#ff9800,#f44336);color:#fff" onclick="sendReset()">
+  &#x1F504; 重置配网（清除WiFi配置并重启）
+</button>
+
+<div class="progress" id="progressWrap" style="display:none">
+  <div class="progress-bar" id="progressBar"></div>
+</div>
+
+<div class="log" id="log" style="display:none"></div>
+
+<div id="status"></div>
+
+<div class="warn">
+  <strong>需要 Chrome / Edge 浏览器</strong>（支持 Web Serial API）<br>
+  烧录完成后，手机搜索 "AI-LED-xxxx" WiFi 进行配网。<br>
+  配网页面填写：WiFi名称、WiFi密码、运行 broker.js 的电脑IP地址。
+</div>
+
+<div style="text-align:center;margin-top:16px;color:#555;font-size:12px">
+  固件版本: 0.1.0 | <a href="https://github.com/nicohood/espressif-web-flasher">基于 esptool-js</a>
+</div>
+</div>
+
+<script type="module">
+import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.6.0/bundle.js';
+
+const baudRate = 115200;
+let currentPort = null;
+
+window.startFlash = async function() {
+  const btn = document.getElementById('flashBtn');
+  const logEl = document.getElementById('log');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const statusEl = document.getElementById('status');
+  const board = document.getElementById('board').value;
+
+  logEl.style.display = 'block';
+  progressWrap.style.display = 'block';
+  logEl.textContent = '';
+  statusEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = '烧录中...';
+  progressBar.style.width = '0%';
+
+  const log = (msg) => { logEl.textContent += msg + '\n'; logEl.scrollTop = logEl.scrollHeight; };
+
+  let transport = null;
+  try {
+    log('[1/5] 请求串口...');
+    if (currentPort) {
+      try { await currentPort.close(); } catch (_) {}
+      currentPort = null;
+    }
+    const port = await navigator.serial.requestPort();
+    currentPort = port;
+
+    log('[2/5] 连接开发板...');
+    transport = new Transport(port, true);
+
+    const loader = new ESPLoader({
+      transport,
+      baudrate: baudRate,
+      terminal: {
+        clean() { logEl.textContent = ''; },
+        writeLine(data) { log(data); },
+        write(data) { log(data); },
+      },
+    });
+
+    const chipName = await loader.main();
+    log('  芯片: ' + chipName);
+
+    log('[3/5] 下载固件...');
+    progressBar.style.width = '30%';
+
+    const baseUrl = `firmware/${board}/`;
+    let fileArray = [];
+
+    if (board === 'esp32c3' || board === 'esp32s2' || board === 'esp32s3' || board === 'esp32') {
+      const [bootloaderRes, partitionsRes, firmwareRes] = await Promise.all([
+        fetch(baseUrl + 'bootloader.bin'),
+        fetch(baseUrl + 'partitions.bin'),
+        fetch(baseUrl + 'firmware.bin'),
+      ]);
+      if (!bootloaderRes.ok || !partitionsRes.ok || !firmwareRes.ok) {
+        throw new Error('固件文件未找到');
+      }
+      const [bootloader, partitions, firmware] = await Promise.all([
+        bootloaderRes.arrayBuffer(),
+        partitionsRes.arrayBuffer(),
+        firmwareRes.arrayBuffer(),
+      ]);
+      fileArray = [
+        { data: new Uint8Array(bootloader), address: 0x0 },
+        { data: new Uint8Array(partitions), address: 0x8000 },
+        { data: new Uint8Array(firmware), address: 0x10000 },
+      ];
+      progressBar.style.width = '60%';
+      log('  bootloader: ' + bootloader.byteLength + ' bytes');
+      log('  partitions: ' + partitions.byteLength + ' bytes');
+      log('  firmware: ' + firmware.byteLength + ' bytes');
+    } else {
+      const firmwareUrl = baseUrl + 'ai-led-firmware.bin';
+      const resp = await fetch(firmwareUrl);
+      if (!resp.ok) {
+        throw new Error('固件文件未找到: ' + firmwareUrl);
+      }
+      const firmware = new Uint8Array(await resp.arrayBuffer());
+      fileArray = [{ data: firmware, address: 0x0 }];
+      progressBar.style.width = '60%';
+      log('  固件大小: ' + firmware.length + ' bytes');
+    }
+
+    log('[4/5] 烧录中...');
+    const flashOptions = {
+      fileArray: fileArray,
+      flashSize: '4MB',
+      eraseAll: true,
+      compress: true,
+      reportProgress: (fileIndex, written, total) => {
+        const pct = 60 + (written / total) * 30;
+        progressBar.style.width = pct + '%';
+      },
+    };
+    await loader.writeFlash(flashOptions);
+
+    log('[5/5] 重启开发板...');
+    progressBar.style.width = '95%';
+
+    try {
+      await loader.after('hard_reset');
+    } catch (_) {}
+
+    await transport.disconnect();
+    try { await port.close(); } catch (_) {}
+    currentPort = null;
+
+    progressBar.style.width = '100%';
+    log('\n烧录完成!');
+    statusEl.innerHTML = '<div class="status success">烧录成功! 开发板已重启。<br>手机搜索 "AI-LED-xxxx" WiFi 进行配网。</div>';
+  } catch (e) {
+    log('\n错误: ' + e.message);
+    if (e.message.includes('open') && e.message.includes('SerialPort')) {
+      statusEl.innerHTML = '<div class="status error">串口打开失败: ' + e.message + '<br><br>排查步骤:<br>1. 关闭其他占用串口的程序（Arduino IDE、串口助手等）<br>2. 拔掉 USB 重新插入<br>3. 刷新页面后重试<br>4. 确认选择了正确的串口</div>';
+    } else {
+      statusEl.innerHTML = '<div class="status error">烧录失败: ' + e.message + '<br>请确认：1.Chrome/Edge 浏览器 2.开发板已 USB 连接 3.选择了正确串口</div>';
+    }
+  }
+
+  if (transport) {
+    try { await transport.disconnect(); } catch (_) {}
+  }
+  if (currentPort) {
+    try { await currentPort.close(); } catch (_) {}
+    currentPort = null;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🔗 连接串口并烧录';
+};
+
+window.sendReset = async function() {
+  const btn = document.getElementById('resetBtn');
+  const statusEl = document.getElementById('status');
+  const logEl = document.getElementById('log');
+  logEl.style.display = 'block';
+  logEl.textContent = '';
+  statusEl.innerHTML = '';
+  btn.disabled = true;
+  btn.textContent = '重置中...';
+
+  try {
+    if (currentPort) {
+      try { await currentPort.close(); } catch (_) {}
+      currentPort = null;
+    }
+    const port = await navigator.serial.requestPort();
+    currentPort = port;
+    await port.open({ baudRate: 115200 });
+
+    const writer = port.writable.getWriter();
+    const encoder = new TextEncoder();
+    await writer.write(encoder.encode('RESET\n'));
+    writer.releaseLock();
+
+    await new Promise(r => setTimeout(r, 500));
+    await port.close();
+    currentPort = null;
+
+    logEl.textContent = '已发送 RESET 命令，设备将重启并进入配网模式\n';
+    statusEl.innerHTML = '<div class="status success">重置成功! 设备正在重启...<br>手机搜索 "AI-LED-xxxx" WiFi 进行配网。</div>';
+  } catch (e) {
+    logEl.textContent = '错误: ' + e.message + '\n';
+    statusEl.innerHTML = '<div class="status error">重置失败: ' + e.message + '<br>请确认：1.Chrome/Edge 浏览器 2.开发板已 USB 连接 3.选择了正确串口</div>';
+  }
+
+  if (currentPort) {
+    try { await currentPort.close(); } catch (_) {}
+    currentPort = null;
+  }
+  btn.disabled = false;
+  btn.textContent = '🔄 重置配网（清除WiFi配置并重启）';
+};
+</script>
+</body>
+</html>

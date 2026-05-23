@@ -1,0 +1,16 @@
+{
+  "name": "ai-led-light",
+  "version": "0.1.0",
+  "description": "AI coding assistant LED indicator - MQTT event bridge",
+  "type": "module",
+  "scripts": {
+    "broker": "node broker.js",
+    "subscribe": "node subscriber.js",
+    "test": "node test-publisher.js",
+    "start": "node broker.js & sleep 1 && node subscriber.js & sleep 1 && node test-publisher.js"
+  },
+  "dependencies": {
+    "aedes": "^0.51.0",
+    "mqtt": "^5.10.4"
+  }
+}
