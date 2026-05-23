@@ -1,17 +1,14 @@
+import http from 'http';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
+import selfsigned from 'selfsigned';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3000;
 const ROOT = __dirname;
-
-const options = {
-  key: fs.readFileSync(path.join(__dirname, 'ssl', 'key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'ssl', 'cert.pem')),
-};
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -46,7 +43,37 @@ function serve(req, res) {
   });
 }
 
-https.createServer(options, serve).listen(PORT, '0.0.0.0', () => {
+async function generateSelfSignedCert() {
+  const sslDir = path.join(__dirname, 'ssl');
+  const keyPath = path.join(sslDir, 'key.pem');
+  const certPath = path.join(sslDir, 'cert.pem');
+
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    return { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) };
+  }
+
+  try {
+    fs.mkdirSync(sslDir, { recursive: true });
+    const pems = await selfsigned.generate(
+      [{ name: 'commonName', value: 'localhost' }],
+      { keySize: 2048, days: 365 }
+    );
+    fs.writeFileSync(keyPath, pems.private);
+    fs.writeFileSync(certPath, pems.cert);
+    return { key: pems.private, cert: pems.cert };
+  } catch (err) {
+    console.error('SSL 证书生成失败:', err.message);
+    return null;
+  }
+}
+
+const sslOptions = await generateSelfSignedCert();
+const proto = sslOptions ? 'https' : 'http';
+const server = sslOptions
+  ? https.createServer(sslOptions, serve)
+  : http.createServer(serve);
+
+server.listen(PORT, '0.0.0.0', () => {
   const nets = networkInterfaces();
   const ips = [];
   for (const name of Object.keys(nets)) {
@@ -56,10 +83,14 @@ https.createServer(options, serve).listen(PORT, '0.0.0.0', () => {
       }
     }
   }
-  console.log('=== AI LED Web Flasher (HTTPS) ===');
-  console.log(`本机访问: https://localhost:${PORT}/`);
+  console.log('=== AI LED Web Flasher ===');
+  console.log(`本机访问: ${proto}://localhost:${PORT}/`);
   for (const ip of ips) {
-    console.log(`局域网访问: https://${ip}:${PORT}/`);
+    console.log(`局域网访问: ${proto}://${ip}:${PORT}/`);
   }
-  console.log('\n注意: 浏览器会提示证书不安全，点击 "高级" → "继续访问" 即可');
+  if (proto === 'https') {
+    console.log('\n注意: 浏览器会提示证书不安全，点击 "高级" → "继续访问" 即可');
+  } else {
+    console.log('\nHTTP 模式 - Web Serial API 仅在 localhost 下可用');
+  }
 });

@@ -1,9 +1,11 @@
 import aedes from "aedes";
 import { createServer } from "net";
 import fs from "fs";
+import path from "path";
+import { tmpdir } from "os";
 
 const PORT = 1883;
-const PID_FILE = "/tmp/ai-led-broker.pid";
+const PID_FILE = path.join(tmpdir(), "ai-led-broker.pid");
 const broker = aedes();
 const server = createServer(broker.handle);
 

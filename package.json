@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "aedes": "^0.51.0",
-    "mqtt": "^5.10.4"
+    "mqtt": "^5.10.4",
+    "selfsigned": "^5.5.0",
+    "serialport": "^13.0.0"
   }
 }

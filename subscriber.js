@@ -1,10 +1,11 @@
 import mqtt from "mqtt";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PID_FILE = "/tmp/ai-led-subscriber.pid";
+const PID_FILE = path.join(os.tmpdir(), "ai-led-subscriber.pid");
 
 function loadMqttConfig() {
   const configPaths = [
