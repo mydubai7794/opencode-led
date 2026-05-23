@@ -178,6 +178,18 @@ function cancelPendingDone() {
   pendingDoneTimer = null;
 }
 
+function activateSession(eventDetail) {
+  if (Date.now() < suppressThinkingUntil) {
+    log(`[suppressed] ${eventDetail}`);
+    return false;
+  }
+  cancelPendingDone();
+  clearTimeout(doneTimer);
+  isSessionActive = true;
+  suppressThinkingUntil = 0;
+  return true;
+}
+
 function markThinking(eventDetail) {
   if (Date.now() < suppressThinkingUntil) {
     log(`[suppressed] ${eventDetail}`);
@@ -240,30 +252,21 @@ export const AiLedPlugin = async () => {
           markThinking("session.diff");
           break;
         case "tool.execute.before":
-          cancelPendingDone();
-          clearTimeout(doneTimer);
-          isSessionActive = true;
-          suppressThinkingUntil = 0;
+          if (!activateSession(`tool.execute.before:${event.data?.tool || "?"}`)) break;
           publishProject("thinking", `tool.execute.before:${event.data?.tool || "?"}`);
           break;
         case "tool.execute.after":
           markThinking(`tool.execute.after:${event.data?.tool || "?"}`);
           break;
         case "permission.asked":
-          cancelPendingDone();
-          clearTimeout(doneTimer);
-          isSessionActive = true;
-          suppressThinkingUntil = 0;
+          if (!activateSession("permission.asked")) break;
           publishProject("auth_required", "permission.asked");
           break;
         case "permission.replied":
           markThinking("permission.replied");
           break;
         case "question.asked":
-          cancelPendingDone();
-          clearTimeout(doneTimer);
-          isSessionActive = true;
-          suppressThinkingUntil = 0;
+          if (!activateSession("question.asked")) break;
           publishProject("auth_required", "question.asked");
           break;
         case "question.replied":
