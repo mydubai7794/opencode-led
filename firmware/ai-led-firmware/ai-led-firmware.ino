@@ -106,11 +106,19 @@ void saveConfig() {
 }
 
 void clearConfig() {
+  Serial.println("[AI-LED] clearConfig: clearing memory");
   memset(&cfg, 0, sizeof(cfg));
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.put(0, cfg);
-  EEPROM.commit();
+  bool ok = EEPROM.commit();
   EEPROM.end();
+  Serial.printf("[AI-LED] clearConfig: EEPROM commit %s\n", ok ? "OK" : "FAILED");
+
+  EEPROM.begin(EEPROM_SIZE);
+  Config verify;
+  EEPROM.get(0, verify);
+  EEPROM.end();
+  Serial.printf("[AI-LED] clearConfig: verify valid=0x%02X ssid[0]=0x%02X\n", verify.valid, verify.ssid[0]);
 }
 
 void setAllPixels(uint8_t r, uint8_t g, uint8_t b) {
@@ -206,6 +214,7 @@ void reconnectMQTT() {
       mqtt.subscribe("ai-led/state", 1);
     } else {
       delay(2000);
+      handleSerial();
     }
     attempts++;
   }
@@ -220,6 +229,7 @@ bool connectWiFi() {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(500);
+    handleSerial();
     updateLED();
   }
   return WiFi.status() == WL_CONNECTED;
@@ -316,8 +326,12 @@ void handleSerial() {
         if (serialBuf == "RESET") {
           Serial.println("[AI-LED] Serial RESET command, clearing config");
           clearConfig();
-          delay(100);
+          Serial.println("[AI-LED] clearConfig done, waiting 500ms before restart...");
+          delay(500);
+          Serial.println("[AI-LED] restarting now");
           ESP.restart();
+        } else if (serialBuf == "PING") {
+          Serial.println("[AI-LED] PONG");
         }
         serialBuf = "";
       }

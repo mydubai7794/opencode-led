@@ -189,7 +189,7 @@ window.startFlash = async function() {
     const flashOptions = {
       fileArray: fileArray,
       flashSize: '4MB',
-      eraseAll: true,
+      eraseAll: false,
       compress: true,
       reportProgress: (fileIndex, written, total) => {
         const pct = 60 + (written / total) * 30;
@@ -252,19 +252,105 @@ window.sendReset = async function() {
     currentPort = port;
     await port.open({ baudRate: 115200 });
 
-    const writer = port.writable.getWriter();
     const encoder = new TextEncoder();
-    await writer.write(encoder.encode('RESET\n'));
-    writer.releaseLock();
+    const decoder = new TextDecoder();
+    const reader = port.readable.getReader();
+    const writer = port.writable.getWriter();
 
-    await new Promise(r => setTimeout(r, 500));
-    await port.close();
+    let allOutput = '';
+    const readOutput = async (ms) => {
+      const start = Date.now();
+      while (Date.now() - start < ms) {
+        try {
+          const { value } = await reader.read();
+          if (value) {
+            const text = decoder.decode(value);
+            allOutput += text;
+            logEl.textContent += text;
+            logEl.scrollTop = logEl.scrollHeight;
+          }
+        } catch (_) { break; }
+      }
+    };
+
+    logEl.textContent += '[1/3] 等待设备就绪...\n';
+    await new Promise(r => setTimeout(r, 5000));
+    await readOutput(1000);
+
+    logEl.textContent += '\n[2/3] 发送 RESET...\n';
+    await writer.write(encoder.encode('RESET\n'));
+    await readOutput(3000);
+
+    if (!allOutput.includes('restarting now')) {
+      logEl.textContent += '\n设备未响应，3秒后重试...\n';
+      await new Promise(r => setTimeout(r, 3000));
+      await writer.write(encoder.encode('RESET\n'));
+      await readOutput(3000);
+    }
+
+    if (!allOutput.includes('restarting now')) {
+      logEl.textContent += '\n设备仍未响应，3秒后最后一次重试...\n';
+      await new Promise(r => setTimeout(r, 3000));
+      await writer.write(encoder.encode('RESET\n'));
+      await readOutput(3000);
+    }
+
+    writer.releaseLock();
+    reader.cancel().catch(() => {});
+    reader.releaseLock();
+
+    await new Promise(r => setTimeout(r, 300));
+    try { await port.close(); } catch (_) {}
     currentPort = null;
 
-    logEl.textContent = '已发送 RESET 命令，设备将重启并进入配网模式\n';
-    statusEl.innerHTML = '<div class="status success">重置成功! 设备正在重启...<br>手机搜索 "AI-LED-xxxx" WiFi 进行配网。</div>';
+    if (allOutput.includes('restarting now')) {
+      logEl.textContent += '\n[3/3] 重置成功，设备正在重启\n';
+      statusEl.innerHTML = '<div class="status success">重置成功! 设备正在重启...<br>手机搜索 "AI-LED-xxxx" WiFi 进行配网。</div>';
+    } else {
+      logEl.textContent += '\n[3/3] 未收到设备确认\n';
+      statusEl.innerHTML = '<div class="status error">未收到设备确认响应。<br>请将上方日志截图反馈以便排查。</div>';
+    }
   } catch (e) {
-    logEl.textContent = '错误: ' + e.message + '\n';
+    logEl.textContent += '\n错误: ' + e.message + '\n';
+    statusEl.innerHTML = '<div class="status error">重置失败: ' + e.message + '<br>请确认：1.Chrome/Edge 浏览器 2.开发板已 USB 连接 3.选择了正确串口</div>';
+  }
+
+  if (currentPort) {
+    try { await currentPort.close(); } catch (_) {}
+    currentPort = null;
+  }
+  btn.disabled = false;
+  btn.textContent = '🔄 重置配网（清除WiFi配置并重启）';
+};
+
+    logEl.textContent += '[1/3] 发送 RESET...\n';
+    await writer.write(encoder.encode('RESET\n'));
+
+    await readOutput(3000);
+
+    if (!allOutput.includes('restarting now')) {
+      logEl.textContent += '\n[2/3] 首次未确认，再次发送 RESET...\n';
+      await writer.write(encoder.encode('RESET\n'));
+      await readOutput(3000);
+    }
+
+    writer.releaseLock();
+    reader.cancel().catch(() => {});
+    reader.releaseLock();
+
+    await new Promise(r => setTimeout(r, 300));
+    try { await port.close(); } catch (_) {}
+    currentPort = null;
+
+    if (allOutput.includes('clearConfig') || allOutput.includes('restarting')) {
+      logEl.textContent += '\n[3/3] 设备已重启\n';
+      statusEl.innerHTML = '<div class="status success">重置成功! 设备正在重启...<br>手机搜索 "AI-LED-xxxx" WiFi 进行配网。</div>';
+    } else {
+      logEl.textContent += '\n[3/3] 未收到设备响应\n';
+      statusEl.innerHTML = '<div class="status error">未收到设备确认响应。<br>请将上方日志截图反馈。</div>';
+    }
+  } catch (e) {
+    logEl.textContent += '\n错误: ' + e.message + '\n';
     statusEl.innerHTML = '<div class="status error">重置失败: ' + e.message + '<br>请确认：1.Chrome/Edge 浏览器 2.开发板已 USB 连接 3.选择了正确串口</div>';
   }
 
