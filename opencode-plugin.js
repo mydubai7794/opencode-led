@@ -15,6 +15,7 @@ let doneTimer = null;
 let debounceTimer = null;
 let msgCount = 0;
 let lastWinnerState = "";
+let isSessionActive = false;
 const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
@@ -169,6 +170,7 @@ function handleProjectMessage(topic, message) {
 
 function markThinking(eventDetail) {
   clearTimeout(doneTimer);
+  isSessionActive = true;
   if (debounceTimer) return;
   publishProject("thinking", eventDetail);
   debounceTimer = setTimeout(() => { debounceTimer = null; }, DEBOUNCE_MS);
@@ -178,6 +180,7 @@ function cleanup() {
   clearTimeout(idleTimer);
   clearTimeout(doneTimer);
   clearTimeout(debounceTimer);
+  isSessionActive = false;
   if (client) {
     client.unsubscribe(PROJECT_TOPIC);
     client.end(true);
@@ -221,34 +224,49 @@ export const AiLedPlugin = async () => {
           markThinking("session.diff");
           break;
         case "tool.execute.before":
+          clearTimeout(doneTimer);
+          isSessionActive = true;
           publishProject("thinking", `tool.execute.before:${event.data?.tool || "?"}`);
           break;
         case "tool.execute.after":
           markThinking(`tool.execute.after:${event.data?.tool || "?"}`);
           break;
         case "permission.asked":
+          clearTimeout(doneTimer);
+          isSessionActive = true;
           publishProject("auth_required", "permission.asked");
           break;
         case "permission.replied":
           markThinking("permission.replied");
           break;
         case "question.asked":
+          clearTimeout(doneTimer);
+          isSessionActive = true;
           publishProject("auth_required", "question.asked");
           break;
         case "question.replied":
           markThinking("question.replied");
           break;
         case "session.idle":
-          publishProject("done", "session.idle");
+          if (isSessionActive) {
+            isSessionActive = false;
+            clearTimeout(doneTimer);
+            publishProject("done", "session.idle");
+          }
           break;
         case "session.error":
+          clearTimeout(doneTimer);
+          isSessionActive = false;
           publishProject("error", "session.error");
           break;
         case "session.status":
           clearTimeout(idleTimer);
           clearTimeout(doneTimer);
           doneTimer = setTimeout(() => {
-            publishProject("done", "no-event timeout");
+            if (isSessionActive) {
+              isSessionActive = false;
+              publishProject("done", "no-event timeout");
+            }
           }, DONE_TIMEOUT);
           break;
         default:
