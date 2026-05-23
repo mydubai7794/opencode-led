@@ -1,4 +1,5 @@
 node_modules/
+mqtt-config.json
 *.pid
 *.log
 .DS_Store

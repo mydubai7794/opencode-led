@@ -303,6 +303,8 @@ opencode-led/
 4. **ESP32 在 Arduino IDE 不需要额外 SDK** — 只需 Board Manager 添加 ESP32 URL
 5. **插件内嵌 broker，无需手动 start.sh** — 自 v4 起 broker 随插件自动启停；端口冲突时自动降级为纯客户端模式
 6. **remote 模式下跳过内嵌 Broker** — 插件自动读取 mqtt-config.json，远程模式直接连接外部 Mosquitto
+7. **ESP32-C3 Web Serial RTS 复位不可靠** — 烧录/擦除后必须拔掉 USB 线重新插入（物理断电重启），Web Serial 的硬复位信号无法让固件正常启动，不拔插会表现为找不到 WiFi 热点
+8. **ESP32-C3 USB-Serial/JTAG 不支持应用层串口命令** — 打开串口时 DTR 信号翻转会复位芯片，PING/RESET 等文本命令在 ROM bootloader 阶段丢失；重置配网改用 esptool 擦除 flash + 重烧固件的方式
 
 ## License
 
