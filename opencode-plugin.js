@@ -3,6 +3,7 @@ import aedes from "aedes";
 import { createServer } from "net";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 
@@ -16,14 +17,16 @@ let debounceTimer = null;
 let msgCount = 0;
 let lastWinnerState = "";
 let isSessionActive = false;
+let suppressThinkingUntil = 0;
 const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
 const PROJECT_TOPIC = "ai-led/project";
-const LOG_FILE = "/tmp/ai-led-events.log";
+const LOG_FILE = path.join(os.tmpdir(), "ai-led-events.log");
 const DONE_TIMEOUT = 10_000;
 const IDLE_TIMEOUT = 60_000;
 const DEBOUNCE_MS = 300;
+const SUPPRESS_MS = 2000;
 const BROKER_PORT = 1883;
 const PROJECT_ID = crypto.createHash("sha256").update(process.cwd()).digest("hex").slice(0, 8);
 
@@ -169,6 +172,10 @@ function handleProjectMessage(topic, message) {
 }
 
 function markThinking(eventDetail) {
+  if (Date.now() < suppressThinkingUntil) {
+    log(`[suppressed] ${eventDetail}`);
+    return;
+  }
   clearTimeout(doneTimer);
   isSessionActive = true;
   if (debounceTimer) return;
@@ -226,6 +233,7 @@ export const AiLedPlugin = async () => {
         case "tool.execute.before":
           clearTimeout(doneTimer);
           isSessionActive = true;
+          suppressThinkingUntil = 0;
           publishProject("thinking", `tool.execute.before:${event.data?.tool || "?"}`);
           break;
         case "tool.execute.after":
@@ -234,6 +242,7 @@ export const AiLedPlugin = async () => {
         case "permission.asked":
           clearTimeout(doneTimer);
           isSessionActive = true;
+          suppressThinkingUntil = 0;
           publishProject("auth_required", "permission.asked");
           break;
         case "permission.replied":
@@ -242,6 +251,7 @@ export const AiLedPlugin = async () => {
         case "question.asked":
           clearTimeout(doneTimer);
           isSessionActive = true;
+          suppressThinkingUntil = 0;
           publishProject("auth_required", "question.asked");
           break;
         case "question.replied":
@@ -251,12 +261,14 @@ export const AiLedPlugin = async () => {
           if (isSessionActive) {
             isSessionActive = false;
             clearTimeout(doneTimer);
+            suppressThinkingUntil = Date.now() + SUPPRESS_MS;
             publishProject("done", "session.idle");
           }
           break;
         case "session.error":
           clearTimeout(doneTimer);
           isSessionActive = false;
+          suppressThinkingUntil = 0;
           publishProject("error", "session.error");
           break;
         case "session.status":

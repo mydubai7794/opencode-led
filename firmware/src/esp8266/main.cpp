@@ -1,21 +1,24 @@
-#define LED_PIN 8
-#define NUM_PIXELS 3
-#define BUTTON_PIN 9
-#define BUTTON_ENABLED false
-#define EEPROM_SIZE 512
-#define CONFIG_VALID 0xA5
-#define MSG_TIMEOUT 180000
+#define LED_TOP_PIN    14
+#define LED_MID_PIN    12
+#define LED_BOT_PIN    13
+#define BUTTON_PIN     0
+#define EEPROM_SIZE    512
+#define CONFIG_VALID   0xA5
+#define PWM_RANGE      1023
+#define PWM_FREQ       1000
+#define MSG_TIMEOUT    180000
 
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 #include <DNSServer.h>
-#include <WebServer.h>
+#include <ESP8266WebServer.h>
 #include <PubSubClient.h>
-#include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 
-Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
-WebServer server(80);
+const uint8_t ledPins[] = {LED_TOP_PIN, LED_MID_PIN, LED_BOT_PIN};
+const int NUM_LEDS = 3;
+
+ESP8266WebServer server(80);
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 DNSServer dnsServer;
@@ -26,8 +29,6 @@ struct Config {
   char password[65];
   char broker[65];
   int brokerPort;
-  char mqttUser[33];
-  char mqttPass[65];
 };
 
 Config cfg;
@@ -66,8 +67,6 @@ button:active{opacity:.8}
 <div class='field'><label>Password</label><input id='pass' type='password' placeholder='password'></div>
 <div class='field'><label>MQTT Broker</label><input id='broker' placeholder='192.168.1.100' required><p class='hint'>broker.js IP</p></div>
 <div class='field'><label>Port</label><input id='port' value='1883' required></div>
-<div class='field'><label>MQTT User</label><input id='mqttuser' placeholder='(optional)'></div>
-<div class='field'><label>MQTT Password</label><input id='mqttpass' type='password' placeholder='(optional)'></div>
 <button type='submit'>Save</button>
 </form>
 <div id='status' class='status'></div>
@@ -77,7 +76,7 @@ async function save(e){
 e.preventDefault();
 const s=document.getElementById('status');
 s.className='status';s.textContent='...';s.style.display='block';
-const body=new URLSearchParams({ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value,broker:document.getElementById('broker').value,port:document.getElementById('port').value,mqttuser:document.getElementById('mqttuser').value,mqttpass:document.getElementById('mqttpass').value});
+const body=new URLSearchParams({ssid:document.getElementById('ssid').value,pass:document.getElementById('pass').value,broker:document.getElementById('broker').value,port:document.getElementById('port').value});
 try{
 const r=await fetch('/save',{method:'POST',body:body});
 const j=await r.json();
@@ -93,7 +92,7 @@ void loadConfig() {
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.get(0, cfg);
   EEPROM.end();
-  if (cfg.valid != CONFIG_VALID || cfg.ssid[0] == 0 || cfg.ssid[0] == 0xFF) {
+  if (cfg.valid != CONFIG_VALID) {
     memset(&cfg, 0, sizeof(cfg));
   }
 }
@@ -106,75 +105,95 @@ void saveConfig() {
 }
 
 void clearConfig() {
-  Serial.println("[AI-LED] clearConfig: clearing memory");
   memset(&cfg, 0, sizeof(cfg));
   EEPROM.begin(EEPROM_SIZE);
   EEPROM.put(0, cfg);
-  bool ok = EEPROM.commit();
+  EEPROM.commit();
   EEPROM.end();
-  Serial.printf("[AI-LED] clearConfig: EEPROM commit %s\n", ok ? "OK" : "FAILED");
-
-  EEPROM.begin(EEPROM_SIZE);
-  Config verify;
-  EEPROM.get(0, verify);
-  EEPROM.end();
-  Serial.printf("[AI-LED] clearConfig: verify valid=0x%02X ssid[0]=0x%02X\n", verify.valid, verify.ssid[0]);
 }
 
-void setAllPixels(uint8_t r, uint8_t g, uint8_t b) {
-  for (int i = 0; i < NUM_PIXELS; i++) {
-    strip.setPixelColor(i, strip.Color(r, g, b));
+void setLED(int index, int brightness) {
+  if (index < 0 || index >= NUM_LEDS) return;
+  int val = constrain(brightness, 0, PWM_RANGE);
+  analogWrite(ledPins[index], val);
+}
+
+void setAllLEDs(int brightness) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    setLED(i, brightness);
   }
 }
 
-void solidLED(uint8_t r, uint8_t g, uint8_t b) {
-  setAllPixels(r, g, b);
-  strip.show();
+void solidLED(int brightness) {
+  setAllLEDs(brightness);
 }
 
-void breathLED(uint8_t r, uint8_t g, uint8_t b, unsigned long period) {
+void breathLED(unsigned long period) {
   float t = (float)(millis() % period) / period;
-  float brightness = (sin(t * 2 * PI) + 1) / 2;
-  setAllPixels((uint8_t)(r * brightness), (uint8_t)(g * brightness), (uint8_t)(b * brightness));
-  strip.show();
+  float b = (sin(t * 2 * PI) + 1) / 2;
+  int val = (int)(b * PWM_RANGE);
+  setAllLEDs(val);
 }
 
-void blinkLED(uint8_t r, uint8_t g, uint8_t b, unsigned long period) {
+void blinkLED(unsigned long period) {
   bool on = (millis() % period) < (period / 2);
-  if (on) solidLED(r, g, b);
-  else { setAllPixels(0, 0, 0); strip.show(); }
+  if (on) setAllLEDs(PWM_RANGE);
+  else setAllLEDs(0);
 }
 
-void marqueeLED(uint8_t r, uint8_t g, uint8_t b, unsigned long period) {
+void marqueeLED(unsigned long period) {
   unsigned long phase = millis() % period;
   float angle = ((float)phase / period) * 2 * PI;
-  for (int i = 0; i < NUM_PIXELS; i++) {
-    float a = angle + (float)i * (2 * PI / NUM_PIXELS);
-    float brightness = (sin(a) + 1) / 2;
-    float br = brightness * brightness;
-    strip.setPixelColor(i, strip.Color((uint8_t)(r * br), (uint8_t)(g * br), (uint8_t)(b * br)));
+  for (int i = 0; i < NUM_LEDS; i++) {
+    float a = angle + (float)i * (2 * PI / NUM_LEDS);
+    float b = (sin(a) + 1) / 2;
+    float br = b * b;
+    setLED(i, (int)(br * PWM_RANGE));
   }
-  strip.show();
+}
+
+unsigned long doneStartTime = 0;
+bool doneActive = false;
+
+void doneLED() {
+  if (!doneActive) {
+    doneActive = true;
+    doneStartTime = millis();
+  }
+  unsigned long elapsed = millis() - doneStartTime;
+  if (elapsed < 1500) {
+    int cycle = elapsed / 250;
+    if (cycle % 2 == 0) setAllLEDs(PWM_RANGE);
+    else setAllLEDs(0);
+  } else {
+    setAllLEDs(0);
+  }
 }
 
 void updateLED() {
   if (strcmp(currentState, "thinking") == 0) {
-    marqueeLED(255, 200, 0, 800);
+    doneActive = false;
+    marqueeLED(800);
   } else if (strcmp(currentState, "auth_required") == 0) {
-    solidLED(255, 0, 0);
+    doneActive = false;
+    solidLED(PWM_RANGE);
   } else if (strcmp(currentState, "done") == 0) {
-    solidLED(0, 255, 0);
+    doneLED();
   } else if (strcmp(currentState, "idle") == 0) {
-    breathLED(0, 100, 255, 2000);
+    doneActive = false;
+    breathLED(2000);
   } else if (strcmp(currentState, "error") == 0) {
-    blinkLED(255, 0, 0, 1600);
+    doneActive = false;
+    blinkLED(1600);
   } else if (strcmp(currentState, "config") == 0) {
-    breathLED(128, 0, 255, 800);
+    doneActive = false;
+    breathLED(800);
   } else if (strcmp(currentState, "off") == 0) {
-    setAllPixels(0, 0, 0);
-    strip.show();
+    doneActive = false;
+    setAllLEDs(0);
   } else {
-    solidLED(0, 0, 0);
+    doneActive = false;
+    setAllLEDs(0);
   }
 }
 
@@ -183,6 +202,7 @@ void setState(const char* state) {
     strncpy(currentState, state, sizeof(currentState) - 1);
     currentState[sizeof(currentState) - 1] = 0;
     lastMsgTime = millis();
+    doneActive = false;
   }
 }
 
@@ -203,18 +223,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void reconnectMQTT() {
   int attempts = 0;
   while (!mqtt.connected() && attempts < 3) {
-    String clientId = "ai-led-" + String(random(0xffff), HEX);
-    bool ok;
-    if (cfg.mqttUser[0]) {
-      ok = mqtt.connect(clientId.c_str(), cfg.mqttUser, cfg.mqttPass);
-    } else {
-      ok = mqtt.connect(clientId.c_str());
-    }
-    if (ok) {
+    String clientId = "ai-led-" + String(ESP.getChipId(), HEX);
+    if (mqtt.connect(clientId.c_str())) {
       mqtt.subscribe("ai-led/state", 1);
     } else {
       delay(2000);
-      handleSerial();
     }
     attempts++;
   }
@@ -229,7 +242,6 @@ bool connectWiFi() {
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
     delay(500);
-    handleSerial();
     updateLED();
   }
   return WiFi.status() == WL_CONNECTED;
@@ -238,7 +250,7 @@ bool connectWiFi() {
 void startAP() {
   apMode = true;
   WiFi.mode(WIFI_AP);
-  String apName = "AI-LED-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+  String apName = "AI-LED-" + String(ESP.getChipId(), HEX);
   WiFi.softAP(apName.c_str());
   setState("config");
 
@@ -251,8 +263,6 @@ void startAP() {
     String pass = server.arg("pass");
     String broker = server.arg("broker");
     int port = server.arg("port").toInt();
-    String mqttuser = server.arg("mqttuser");
-    String mqttpass = server.arg("mqttpass");
 
     strncpy(cfg.ssid, ssid.c_str(), sizeof(cfg.ssid) - 1);
     cfg.ssid[sizeof(cfg.ssid) - 1] = 0;
@@ -260,10 +270,6 @@ void startAP() {
     cfg.password[sizeof(cfg.password) - 1] = 0;
     strncpy(cfg.broker, broker.c_str(), sizeof(cfg.broker) - 1);
     cfg.broker[sizeof(cfg.broker) - 1] = 0;
-    strncpy(cfg.mqttUser, mqttuser.c_str(), sizeof(cfg.mqttUser) - 1);
-    cfg.mqttUser[sizeof(cfg.mqttUser) - 1] = 0;
-    strncpy(cfg.mqttPass, mqttpass.c_str(), sizeof(cfg.mqttPass) - 1);
-    cfg.mqttPass[sizeof(cfg.mqttPass) - 1] = 0;
     cfg.brokerPort = port ? port : 1883;
     cfg.valid = CONFIG_VALID;
     saveConfig();
@@ -283,80 +289,44 @@ void startAP() {
 }
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-  strip.begin();
-  strip.setBrightness(40);
-  strip.show();
+  for (int i = 0; i < NUM_LEDS; i++) {
+    pinMode(ledPins[i], OUTPUT);
+    analogWrite(ledPins[i], 0);
+  }
+  analogWriteRange(PWM_RANGE);
+  analogWriteFreq(PWM_FREQ);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
-  delay(200);
 
   loadConfig();
 
-  Serial.printf("[AI-LED] cfg.valid=0x%02X ssid='%s' broker='%s'\n", cfg.valid, cfg.ssid, cfg.broker);
-
-  if (cfg.valid != CONFIG_VALID || strlen(cfg.ssid) == 0) {
-    Serial.println("[AI-LED] No valid config, starting AP mode");
+  if (cfg.valid != CONFIG_VALID) {
     startAP();
     return;
   }
 
-  Serial.println("[AI-LED] Connecting WiFi...");
   if (!connectWiFi()) {
-    Serial.println("[AI-LED] WiFi failed, starting AP mode");
     startAP();
     return;
   }
 
-  Serial.println("[AI-LED] WiFi connected, connecting MQTT...");
   mqtt.setServer(cfg.broker, cfg.brokerPort);
   mqtt.setCallback(mqttCallback);
   mqtt.setKeepAlive(10);
   reconnectMQTT();
 }
 
-String serialBuf;
-
-void handleSerial() {
-  while (Serial.available()) {
-    char c = Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (serialBuf.length() > 0) {
-        serialBuf.trim();
-        if (serialBuf == "RESET") {
-          Serial.println("[AI-LED] Serial RESET command, clearing config");
-          clearConfig();
-          Serial.println("[AI-LED] clearConfig done, waiting 500ms before restart...");
-          delay(500);
-          Serial.println("[AI-LED] restarting now");
-          ESP.restart();
-        } else if (serialBuf == "PING") {
-          Serial.println("[AI-LED] PONG");
-        }
-        serialBuf = "";
-      }
-    } else {
-      serialBuf += c;
+void loop() {
+  if (digitalRead(BUTTON_PIN) == LOW && !buttonPressed) {
+    buttonPressed = true;
+    delay(50);
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      clearConfig();
+      delay(100);
+      ESP.restart();
     }
   }
-}
-
-void loop() {
-  handleSerial();
-
-  if (BUTTON_ENABLED && digitalRead(BUTTON_PIN) == LOW && !buttonPressed) {
-    delay(100);
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      buttonPressed = true;
-      delay(2000);
-      if (digitalRead(BUTTON_PIN) == LOW) {
-        Serial.println("[AI-LED] Button long-press, clearing config");
-        clearConfig();
-        delay(100);
-        ESP.restart();
-      }
-      buttonPressed = false;
-    }
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    buttonPressed = false;
   }
 
   if (apMode) {
@@ -370,11 +340,9 @@ void loop() {
     reconnectMQTT();
   }
   mqtt.loop();
-  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
-    if (strcmp(currentState, "idle") == 0 && strcmp(currentState, "off") != 0) {
-      setState("off");
-      Serial.println("[AI-LED] Idle for 3min, LED off");
-    }
+  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT && strcmp(currentState, "off") != 0) {
+    setState("off");
+    Serial.println("[AI-LED] No MQTT message for 3min, LED off");
   }
   updateLED();
 }

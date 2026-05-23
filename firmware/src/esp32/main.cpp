@@ -14,6 +14,8 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 
+void handleSerial();
+
 Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
 WiFiClient espClient;
@@ -192,7 +194,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   memcpy(buf, payload, len);
   buf[len] = 0;
 
-  StaticJsonDocument<128> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, buf);
   if (err) return;
 

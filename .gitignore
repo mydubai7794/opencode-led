@@ -6,3 +6,4 @@ mqtt-config.json
 flasher/ssl/
 docs/superpowers/
 AGENTS.md
+.pio/
