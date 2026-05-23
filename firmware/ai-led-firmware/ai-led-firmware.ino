@@ -293,7 +293,7 @@ void setup() {
 
   loadConfig();
 
-  Serial.printf("[AI-LED] cfg.valid=0x%02X ssid='%s' broker='%s'\n", cfg.valid, cfg.ssid, cfg.broker);
+  Serial.printf("[AI-LED] cfg.valid=0x%02X has_ssid=%d has_broker=%d\n", cfg.valid, strlen(cfg.ssid) > 0, strlen(cfg.broker) > 0);
 
   if (cfg.valid != CONFIG_VALID || strlen(cfg.ssid) == 0) {
     Serial.println("[AI-LED] No valid config, starting AP mode");

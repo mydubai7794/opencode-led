@@ -220,7 +220,7 @@ function cleanup() {
 export const AiLedPlugin = async () => {
   const modeLabel = isRemoteMode ? "remote" : "local";
   const brokerUrl = getBrokerUrl();
-  log(`AiLedPlugin 加载 (v7 - ${modeLabel} mode) project=${PROJECT_ID} broker=${brokerUrl}`);
+  log(`AiLedPlugin 加载 (v7 - ${modeLabel} mode) project=${PROJECT_ID}`);
 
   await startEmbeddedBroker();
 
