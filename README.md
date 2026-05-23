@@ -227,11 +227,31 @@ python3 -m http.server 8080
 # 浏览器打开 http://localhost:8080
 ```
 
-### 方式二：Arduino IDE
+### 方式二：Arduino CLI（命令行编译）
 
-> PlatformIO CLI (`pip install platformio`) 仅用于**编译生成 .bin**，烧录请使用 Web Flasher 或 Arduino IDE。PlatformIO 的 `upload` 命令对 ESP32-C3 不可靠。
+```bash
+# 1. 安装 Arduino CLI（一次性）
+# Windows: 从 https://arduino.github.io/arduino-cli/latest/installation/ 下载
+# Linux/macOS:
+curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
 
-1. **安装 ESP32 支持**（一次性）：
+# 2. 配置（一次性）
+arduino-cli config init
+arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+arduino-cli config add board_manager.additional_urls https://arduino.esp8266.com/stable/package_esp8266com_index.json
+arduino-cli core update-index
+arduino-cli core install esp32:esp32 esp8266:esp8266
+arduino-cli lib install PubSubClient ArduinoJson "Adafruit NeoPixel"
+
+# 3. 编译
+arduino-cli compile --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/ai-led-firmware.ino
+arduino-cli compile --fqbn esp8266:esp8266:generic firmware/ai-led-firmware-esp8266/ai-led-firmware-esp8266.ino
+
+# 4. 烧录（可选，也可用 Web Flasher）
+arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/
+```
+
+### 方式三：Arduino IDE
    - Arduino IDE → 文件 → 首选项 → 附加开发板管理器 URL，添加：
      ```
      https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -291,10 +311,6 @@ opencode-led/
 ├── start.sh / stop.sh        # 服务管理脚本（Linux/macOS，调试用）
 ├── start.bat / stop.bat      # 服务管理脚本（Windows，调试用）
 ├── firmware/
-│   ├── platformio.ini                       # PlatformIO 编译配置
-│   ├── src/
-│   │   ├── esp32/main.cpp                   # ESP32 编译入口（基于 ai-led-firmware）
-│   │   └── esp8266/main.cpp                 # ESP8266 编译入口（基于 ai-led-firmware-esp8266）
 │   ├── ai-led-firmware/
 │   │   └── ai-led-firmware.ino              # ESP32-C3 固件源码（WS2812）
 │   └── ai-led-firmware-esp8266/
