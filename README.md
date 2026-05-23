@@ -227,7 +227,32 @@ python3 -m http.server 8080
 # 浏览器打开 http://localhost:8080
 ```
 
-### 方式二：Arduino IDE
+### 方式二：PlatformIO CLI（推荐，命令行）
+
+1. **安装 PlatformIO**：
+   ```bash
+   pip install platformio
+   ```
+
+2. **编译**：
+   ```bash
+   cd firmware
+   pio run                        # 编译全部（ESP32 + ESP8266）
+   pio run -e esp32               # 仅编译 ESP32
+   pio run -e esp8266             # 仅编译 ESP8266
+   ```
+
+3. **烧录**：
+   ```bash
+   pio run -e esp32 -t upload     # 烧录 ESP32
+   pio run -e esp8266 -t upload   # 烧录 ESP8266
+   ```
+
+4. **编译产物路径**：
+   - ESP32：`firmware/.pio/build/esp32/firmware.bin`
+   - ESP8266：`firmware/.pio/build/esp8266/firmware.bin`
+
+### 方式三：Arduino IDE
 
 1. **安装 ESP32 支持**（一次性）：
    - Arduino IDE → 文件 → 首选项 → 附加开发板管理器 URL，添加：
@@ -289,10 +314,14 @@ opencode-led/
 ├── start.sh / stop.sh        # 服务管理脚本（Linux/macOS，调试用）
 ├── start.bat / stop.bat      # 服务管理脚本（Windows，调试用）
 ├── firmware/
+│   ├── platformio.ini                       # PlatformIO 编译配置
+│   ├── src/
+│   │   ├── esp32/main.cpp                   # ESP32 编译入口（基于 ai-led-firmware）
+│   │   └── esp8266/main.cpp                 # ESP8266 编译入口（基于 ai-led-firmware-esp8266）
 │   ├── ai-led-firmware/
-│   │   └── ai-led-firmware.ino          # ESP32-C3 固件（WS2812）
+│   │   └── ai-led-firmware.ino              # ESP32-C3 固件源码（WS2812）
 │   └── ai-led-firmware-esp8266/
-│       └── ai-led-firmware-esp8266.ino  # ESP8266 固件（PWM LED）
+│       └── ai-led-firmware-esp8266.ino      # ESP8266 固件源码（PWM LED）
 ├── flasher/
 │   ├── index.html            # Web Flasher 页面
 │   ├── server.mjs            # HTTPS 烧录服务器（自动生成 SSL 证书）
