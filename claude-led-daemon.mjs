@@ -39,6 +39,7 @@ const doneTimers = new Map();
 const errorTimers = new Map();
 const pendingDoneTimers = new Map();
 const suppressUntil = new Map();
+const sessionActive = new Map();
 
 let mqttClient = null;
 let brokerServer = null;
@@ -157,6 +158,7 @@ function activateSession(sessionId, eventDetail) {
   }
   cancelPendingDone(sessionId);
   clearTimeout(doneTimers.get(sessionId));
+  sessionActive.set(sessionId, true);
   suppressUntil.delete(sessionId);
   return true;
 }
@@ -166,6 +168,7 @@ function markThinking(sessionId, eventDetail) {
     log(`[suppressed] ${eventDetail}`);
     return;
   }
+  if (!sessionActive.get(sessionId)) return;
   cancelPendingDone(sessionId);
   clearTimeout(doneTimers.get(sessionId));
 
@@ -241,6 +244,7 @@ function handleEvent(data) {
     case "Stop": {
       const prev = sessionStates.get(session_id);
       if (!prev) break;
+      sessionActive.set(session_id, false);
       cancelPendingDone(session_id);
       clearTimeout(doneTimers.get(session_id));
       suppressUntil.set(session_id, Date.now() + SUPPRESS_MS);
@@ -268,6 +272,7 @@ function handleEvent(data) {
     }
 
     case "StopFailure":
+      sessionActive.set(session_id, false);
       cancelPendingDone(session_id);
       clearTimeout(doneTimers.get(session_id));
       suppressUntil.delete(session_id);
