@@ -1,5 +1,5 @@
 #define LED_PIN 8
-#define NUM_PIXELS 3
+#define NUM_PIXELS 2
 #define BUTTON_PIN 9
 #define BUTTON_ENABLED false
 #define EEPROM_SIZE 512
