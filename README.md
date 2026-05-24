@@ -196,6 +196,15 @@ node test-publisher.js
 stop.bat
 ```
 
+## 3D 打印外壳
+
+项目提供了一个怪兽造型 LED 外壳的 3D 打印模型文件，适配 ESP32-C3 + WS2812 方案：
+
+- **文件位置**：`model/monster-led-case.3mf`
+- **格式**：.3mf（推荐使用 [Bambu Studio](https://bambulab.com/en/download/bambu-studio) 打开）
+- **适配**：ESP32-C3 Super Mini + 2 颗 WS2812B 灯珠，USB-C 口对外露出
+- **演示**：拓竹 A1 打印
+
 ## 硬件物料清单
 
 ![硬件本体](pic/硬件本体.png)
@@ -355,6 +364,8 @@ opencode-led/
 │   │   └── ai-led-firmware.ino              # ESP32-C3 固件源码（WS2812）
 │   └── ai-led-firmware-esp8266/
 │       └── ai-led-firmware-esp8266.ino      # ESP8266 固件源码（PWM LED）
+├── model/
+│   └── monster-led-case.3mf  # 怪兽 LED 外壳 3D 打印模型
 ├── flasher/
 │   ├── index.html            # Web Flasher 页面
 │   ├── server.mjs            # HTTPS 烧录服务器（自动生成 SSL 证书）
