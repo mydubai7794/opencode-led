@@ -19,6 +19,7 @@ let lastWinnerState = "";
 let isSessionActive = false;
 let pendingDoneTimer = null;
 let suppressThinkingUntil = 0;
+let subagentDepth = 0;
 const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
@@ -27,7 +28,7 @@ const LOG_FILE = path.join(os.tmpdir(), "ai-led-events.log");
 const DONE_TIMEOUT = 10_000;
 const IDLE_TIMEOUT = 60_000;
 const DEBOUNCE_MS = 300;
-const PENDING_DONE_MS = 1000;
+const PENDING_DONE_MS = 1500;
 const SUPPRESS_MS = 500;
 const BROKER_PORT = 1883;
 const PROJECT_ID = crypto.createHash("sha256").update(process.cwd()).digest("hex").slice(0, 8);
@@ -212,6 +213,7 @@ function cleanup() {
   clearTimeout(debounceTimer);
   clearTimeout(pendingDoneTimer);
   isSessionActive = false;
+  subagentDepth = 0;
   if (client) {
     client.unsubscribe(PROJECT_TOPIC);
     client.end(true);
@@ -237,7 +239,7 @@ export const AiLedPlugin = async () => {
     event: async ({ event }) => {
       switch (event.type) {
         case "message.updated":
-          if (event.data?.role === "assistant" && isSessionActive) markThinking("message.updated:assistant");
+          if (event.data?.role === "assistant") markThinking("message.updated:assistant");
           break;
         case "message.part.updated":
           markThinking("message.part.updated");
@@ -247,13 +249,6 @@ export const AiLedPlugin = async () => {
           break;
         case "session.diff":
           if (isSessionActive) markThinking("session.diff");
-          break;
-        case "tool.execute.before":
-          if (!activateSession(`tool.execute.before:${event.data?.tool || "?"}`)) break;
-          publishProject("thinking", `tool.execute.before:${event.data?.tool || "?"}`);
-          break;
-        case "tool.execute.after":
-          markThinking(`tool.execute.after:${event.data?.tool || "?"}`);
           break;
         case "permission.asked":
           if (!activateSession("permission.asked")) break;
@@ -274,7 +269,10 @@ export const AiLedPlugin = async () => {
             isSessionActive = false;
             clearTimeout(doneTimer);
             cancelPendingDone();
-            suppressThinkingUntil = Date.now() + SUPPRESS_MS;
+            if (subagentDepth > 0) {
+              log(`[session.idle] subagentDepth=${subagentDepth}, skipping done`);
+              break;
+            }
             pendingDoneTimer = setTimeout(() => {
               pendingDoneTimer = null;
               publishProject("done", "session.idle");
@@ -303,6 +301,26 @@ export const AiLedPlugin = async () => {
           log(`event: ${event.type}`);
           break;
       }
+    },
+    "tool.execute.before": async (input, output) => {
+      const tool = input.tool || "?";
+      log(`[hook] tool.execute.before: ${tool}`);
+      if (tool === "task") {
+        subagentDepth++;
+        log(`[subagent] depth++ → ${subagentDepth}`);
+      }
+      if (activateSession(`tool.execute.before:${tool}`)) {
+        publishProject("thinking", `tool.execute.before:${tool}`);
+      }
+    },
+    "tool.execute.after": async (input, output) => {
+      const tool = input.tool || "?";
+      log(`[hook] tool.execute.after: ${tool}`);
+      if (tool === "task") {
+        subagentDepth = Math.max(0, subagentDepth - 1);
+        log(`[subagent] depth-- → ${subagentDepth}`);
+      }
+      markThinking(`tool.execute.after:${tool}`);
     },
   };
 };
