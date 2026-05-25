@@ -28,7 +28,7 @@ const DONE_TIMEOUT = 10_000;
 const IDLE_TIMEOUT = 60_000;
 const DEBOUNCE_MS = 300;
 const PENDING_DONE_MS = 1000;
-const SUPPRESS_MS = 3000;
+const SUPPRESS_MS = 500;
 const BROKER_PORT = 1883;
 const PROJECT_ID = crypto.createHash("sha256").update(process.cwd()).digest("hex").slice(0, 8);
 
@@ -110,6 +110,9 @@ function getClient() {
         if (err) log("协调订阅失败: " + err.message);
         else log("已订阅协调 topic: " + PROJECT_TOPIC);
       });
+    });
+    client.on("message", (topic, message) => {
+      if (topic === PROJECT_TOPIC) handleProjectMessage(topic, message);
     });
   }
   return client;
@@ -222,17 +225,11 @@ export const AiLedPlugin = async () => {
   const brokerUrl = getBrokerUrl();
   log(`AiLedPlugin 加载 (v7 - ${modeLabel} mode) project=${PROJECT_ID}`);
 
-  await startEmbeddedBroker();
+  startEmbeddedBroker();
 
   process.on("exit", cleanup);
   process.on("SIGINT", () => { cleanup(); process.exit(0); });
   process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-
-  const c = getClient();
-
-  c.on("message", (topic, message) => {
-    if (topic === PROJECT_TOPIC) handleProjectMessage(topic, message);
-  });
 
   publishProject("idle", "plugin loaded");
 
@@ -240,7 +237,7 @@ export const AiLedPlugin = async () => {
     event: async ({ event }) => {
       switch (event.type) {
         case "message.updated":
-          if (event.data?.role === "assistant") markThinking("message.updated:assistant");
+          if (event.data?.role === "assistant" && isSessionActive) markThinking("message.updated:assistant");
           break;
         case "message.part.updated":
           markThinking("message.part.updated");
@@ -249,7 +246,7 @@ export const AiLedPlugin = async () => {
           markThinking("message.part.delta");
           break;
         case "session.diff":
-          markThinking("session.diff");
+          if (isSessionActive) markThinking("session.diff");
           break;
         case "tool.execute.before":
           if (!activateSession(`tool.execute.before:${event.data?.tool || "?"}`)) break;

@@ -167,7 +167,7 @@ void updateLED() {
   } else if (strcmp(currentState, "idle") == 0) {
     breathLED(0, 100, 255, 2000);
   } else if (strcmp(currentState, "error") == 0) {
-    blinkLED(255, 0, 0, 1600);
+    breathLED(128, 0, 255, 800);
   } else if (strcmp(currentState, "config") == 0) {
     breathLED(128, 0, 255, 800);
   } else if (strcmp(currentState, "off") == 0) {
