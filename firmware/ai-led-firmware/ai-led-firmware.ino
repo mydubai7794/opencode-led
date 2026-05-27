@@ -179,10 +179,10 @@ void updateLED() {
 }
 
 void setState(const char* state) {
+  lastMsgTime = millis();
   if (strcmp(currentState, state) != 0) {
     strncpy(currentState, state, sizeof(currentState) - 1);
     currentState[sizeof(currentState) - 1] = 0;
-    lastMsgTime = millis();
   }
 }
 
@@ -371,9 +371,10 @@ void loop() {
   }
   mqtt.loop();
   if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
-    if (strcmp(currentState, "idle") == 0 && strcmp(currentState, "off") != 0) {
+    bool canTurnOff = strcmp(currentState, "idle") == 0 || strcmp(currentState, "done") == 0;
+    if (canTurnOff && strcmp(currentState, "off") != 0) {
       setState("off");
-      Serial.println("[AI-LED] Idle for 3min, LED off");
+      Serial.println("[AI-LED] Inactive for 3min, LED off");
     }
   }
   updateLED();
