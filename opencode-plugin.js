@@ -20,6 +20,9 @@ let isSessionActive = false;
 let pendingDoneTimer = null;
 let suppressThinkingUntil = 0;
 let subagentDepth = 0;
+let heartbeatTimer = null;
+const HEARTBEAT_MS = 60_000;
+const ACTIVE_STATES = new Set(["thinking", "auth_required"]);
 const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
@@ -167,10 +170,28 @@ function handleProjectMessage(topic, message) {
       log(`[coordinator] winner=${winner.state} from=${winner.pid} total_projects=${projectStates.size}`);
       if (winner.state === "done") {
         doneTimer = setTimeout(() => {
+          if (isSessionActive) return;
           lastWinnerState = "idle";
           publishProject("idle", "done→idle timeout");
         }, IDLE_TIMEOUT);
       }
+    }
+    if (winner && ACTIVE_STATES.has(winner.state)) {
+      clearTimeout(heartbeatTimer);
+      heartbeatTimer = setTimeout(() => {
+        heartbeatTimer = null;
+        const w = computeWinner();
+        if (w && ACTIVE_STATES.has(w.state)) {
+          const c = getClient();
+          c.publish(TOPIC, JSON.stringify({
+            state: w.state, ts: Date.now(), source: w.pid,
+          }), { qos: 1 });
+          log(`[heartbeat] re-publish ${w.state}`);
+        }
+      }, HEARTBEAT_MS);
+    } else {
+      clearTimeout(heartbeatTimer);
+      heartbeatTimer = null;
     }
   } catch (e) {
     log("协调消息处理错误: " + e.message);
@@ -212,6 +233,8 @@ function cleanup() {
   clearTimeout(doneTimer);
   clearTimeout(debounceTimer);
   clearTimeout(pendingDoneTimer);
+  clearTimeout(heartbeatTimer);
+  heartbeatTimer = null;
   isSessionActive = false;
   subagentDepth = 0;
   if (client) {
@@ -239,6 +262,7 @@ export const AiLedPlugin = async () => {
     event: async ({ event }) => {
       switch (event.type) {
         case "message.updated":
+          log(`[debug] message.updated role=${event.data?.role} session=${isSessionActive}`);
           if (event.data?.role === "assistant") markThinking("message.updated:assistant");
           break;
         case "message.part.updated":
@@ -274,6 +298,7 @@ export const AiLedPlugin = async () => {
               break;
             }
             pendingDoneTimer = setTimeout(() => {
+              if (isSessionActive) return;
               pendingDoneTimer = null;
               publishProject("done", "session.idle");
             }, PENDING_DONE_MS);

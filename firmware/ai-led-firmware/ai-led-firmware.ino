@@ -371,10 +371,9 @@ void loop() {
   }
   mqtt.loop();
   if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
-    bool canTurnOff = strcmp(currentState, "idle") == 0 || strcmp(currentState, "done") == 0;
-    if (canTurnOff && strcmp(currentState, "off") != 0) {
+    if (strcmp(currentState, "idle") == 0) {
       setState("off");
-      Serial.println("[AI-LED] Inactive for 3min, LED off");
+      Serial.println("[AI-LED] Idle for 3min, LED off");
     }
   }
   updateLED();
