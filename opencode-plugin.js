@@ -27,6 +27,7 @@ const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
 const PROJECT_TOPIC = "ai-led/project";
+const ALIVE_TOPIC = "ai-led/alive";
 const LOG_FILE = path.join(os.tmpdir(), "ai-led-events.log");
 const DONE_TIMEOUT = 10_000;
 const IDLE_TIMEOUT = 60_000;
@@ -114,9 +115,18 @@ function getClient() {
         if (err) log("协调订阅失败: " + err.message);
         else log("已订阅协调 topic: " + PROJECT_TOPIC);
       });
+      client.subscribe(ALIVE_TOPIC, { qos: 1 }, (err) => {
+        if (err) log("alive 订阅失败: " + err.message);
+      });
     });
     client.on("message", (topic, message) => {
       if (topic === PROJECT_TOPIC) handleProjectMessage(topic, message);
+      else if (topic === ALIVE_TOPIC) {
+        try {
+          const data = JSON.parse(message.toString());
+          log(`[alive] ESP32 online, ip=${data.ip || "?"}`);
+        } catch { log("[alive] raw: " + message.toString()); }
+      }
     });
   }
   return client;
@@ -166,13 +176,20 @@ function handleProjectMessage(topic, message) {
         source: winner.pid,
       });
       const c = getClient();
-      c.publish(TOPIC, payload, { qos: 1 });
+      c.publish(TOPIC, payload, { qos: 1, retain: true });
       log(`[coordinator] winner=${winner.state} from=${winner.pid} total_projects=${projectStates.size}`);
       if (winner.state === "done") {
         doneTimer = setTimeout(() => {
           if (isSessionActive) return;
+          const pidsToDelete = [];
+          for (const [pid, info] of projectStates) {
+            if (info.state === "done") pidsToDelete.push(pid);
+          }
+          for (const pid of pidsToDelete) projectStates.delete(pid);
           lastWinnerState = "idle";
-          publishProject("idle", "done→idle timeout");
+          const c2 = getClient();
+          c2.publish(TOPIC, JSON.stringify({ state: "idle", ts: Date.now() }), { qos: 1, retain: true });
+          log(`[coordinator] done→idle timeout, cleared ${pidsToDelete.length} done projects`);
         }, IDLE_TIMEOUT);
       }
     }
@@ -185,7 +202,7 @@ function handleProjectMessage(topic, message) {
           const c = getClient();
           c.publish(TOPIC, JSON.stringify({
             state: w.state, ts: Date.now(), source: w.pid,
-          }), { qos: 1 });
+          }), { qos: 1, retain: true });
           log(`[heartbeat] re-publish ${w.state}`);
         }
       }, HEARTBEAT_MS);

@@ -1,8 +1,11 @@
 node_modules/
 mqtt-config.json
+firmware-config.json
+firmware/ai-led-firmware/firmware-config.h
 *.pid
 *.log
 .DS_Store
 flasher/ssl/
 docs/superpowers/
 AGENTS.md
+firmware/ai-led-firmware/build/

@@ -13,6 +13,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include "firmware-config.h"
 
 Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
 WebServer server(80);
@@ -167,7 +168,7 @@ void updateLED() {
   } else if (strcmp(currentState, "idle") == 0) {
     breathLED(0, 100, 255, 2000);
   } else if (strcmp(currentState, "error") == 0) {
-    breathLED(128, 0, 255, 800);
+    blinkLED(255, 0, 0, 400);
   } else if (strcmp(currentState, "config") == 0) {
     breathLED(128, 0, 255, 800);
   } else if (strcmp(currentState, "off") == 0) {
@@ -212,6 +213,13 @@ void reconnectMQTT() {
     }
     if (ok) {
       mqtt.subscribe("ai-led/state", 1);
+      StaticJsonDocument<64> alive;
+      alive["state"] = "alive";
+      alive["ip"] = WiFi.localIP().toString();
+      char aliveBuf[64];
+      serializeJson(alive, aliveBuf);
+      mqtt.publish("ai-led/alive", aliveBuf);
+      Serial.printf("[AI-LED] MQTT connected, IP: %s\n", WiFi.localIP().toString().c_str());
     } else {
       delay(2000);
       handleSerial();
@@ -226,8 +234,9 @@ void reconnectMQTT() {
 bool connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(cfg.ssid, cfg.password);
+  WiFi.setAutoReconnect(true);
   unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - start < 30000) {
     delay(500);
     handleSerial();
     updateLED();
@@ -293,7 +302,27 @@ void setup() {
 
   loadConfig();
 
-  Serial.printf("[AI-LED] cfg.valid=0x%02X has_ssid=%d has_broker=%d\n", cfg.valid, strlen(cfg.ssid) > 0, strlen(cfg.broker) > 0);
+  if (strlen(HARDCODED_WIFI_SSID) > 0) {
+    Serial.println("[AI-LED] Using hardcoded config");
+    strncpy(cfg.ssid, HARDCODED_WIFI_SSID, sizeof(cfg.ssid) - 1);
+    cfg.ssid[sizeof(cfg.ssid) - 1] = 0;
+    strncpy(cfg.password, HARDCODED_WIFI_PASSWORD, sizeof(cfg.password) - 1);
+    cfg.password[sizeof(cfg.password) - 1] = 0;
+    if (strlen(HARDCODED_BROKER) > 0) {
+      strncpy(cfg.broker, HARDCODED_BROKER, sizeof(cfg.broker) - 1);
+      cfg.broker[sizeof(cfg.broker) - 1] = 0;
+      cfg.brokerPort = HARDCODED_BROKER_PORT;
+    }
+    if (strlen(HARDCODED_MQTT_USER) > 0) {
+      strncpy(cfg.mqttUser, HARDCODED_MQTT_USER, sizeof(cfg.mqttUser) - 1);
+      cfg.mqttUser[sizeof(cfg.mqttUser) - 1] = 0;
+      strncpy(cfg.mqttPass, HARDCODED_MQTT_PASS, sizeof(cfg.mqttPass) - 1);
+      cfg.mqttPass[sizeof(cfg.mqttPass) - 1] = 0;
+    }
+    cfg.valid = CONFIG_VALID;
+  }
+
+  Serial.printf("[AI-LED] cfg.valid=0x%02X has_ssid=%d has_broker=%d hardcoded=%d\n", cfg.valid, strlen(cfg.ssid) > 0, strlen(cfg.broker) > 0, strlen(HARDCODED_WIFI_SSID) > 0);
 
   if (cfg.valid != CONFIG_VALID || strlen(cfg.ssid) == 0) {
     Serial.println("[AI-LED] No valid config, starting AP mode");
@@ -301,18 +330,26 @@ void setup() {
     return;
   }
 
+  bool isHardcoded = strlen(HARDCODED_WIFI_SSID) > 0;
+
   Serial.println("[AI-LED] Connecting WiFi...");
   if (!connectWiFi()) {
-    Serial.println("[AI-LED] WiFi failed, starting AP mode");
-    startAP();
-    return;
+    if (isHardcoded) {
+      Serial.println("[AI-LED] WiFi failed (hardcoded), will retry in loop");
+    } else {
+      Serial.println("[AI-LED] WiFi failed, starting AP mode");
+      startAP();
+      return;
+    }
   }
 
-  Serial.println("[AI-LED] WiFi connected, connecting MQTT...");
-  mqtt.setServer(cfg.broker, cfg.brokerPort);
-  mqtt.setCallback(mqttCallback);
-  mqtt.setKeepAlive(10);
-  reconnectMQTT();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("[AI-LED] WiFi connected, connecting MQTT...");
+    mqtt.setServer(cfg.broker, cfg.brokerPort);
+    mqtt.setCallback(mqttCallback);
+    mqtt.setKeepAlive(10);
+    reconnectMQTT();
+  }
 }
 
 String serialBuf;
@@ -366,14 +403,30 @@ void loop() {
     return;
   }
 
-  if (!mqtt.connected()) {
+  if (WiFi.status() != WL_CONNECTED) {
+    if (strlen(HARDCODED_WIFI_SSID) > 0) {
+      Serial.println("[AI-LED] WiFi lost, reconnecting...");
+      WiFi.mode(WIFI_STA);
+      WiFi.begin(cfg.ssid, cfg.password);
+      unsigned long start = millis();
+      while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
+        delay(500);
+        updateLED();
+      }
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("[AI-LED] WiFi reconnected");
+      }
+    }
+  }
+
+  if (WiFi.status() == WL_CONNECTED && !mqtt.connected()) {
     reconnectMQTT();
   }
   mqtt.loop();
   if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
-    if (strcmp(currentState, "idle") == 0) {
+    if (strcmp(currentState, "off") != 0) {
       setState("off");
-      Serial.println("[AI-LED] Idle for 3min, LED off");
+      Serial.println("[AI-LED] No msg for 3min, LED off");
     }
   }
   updateLED();
