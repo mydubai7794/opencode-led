@@ -319,6 +319,44 @@ arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/
    - 项目 → 导出已编译的二进制文件
    - 将 .bin 放到 `flasher/firmware/` 对应目录
 
+## 固件本地配置（跳过配网）
+
+调试固件时，每次烧录后都要重新配网很麻烦。项目支持通过本地配置文件将 WiFi 和 MQTT 凭据**编译进固件**，烧录即用，无需配网。
+
+### 1. 创建 `firmware-config.json`
+
+在项目根目录创建 `firmware-config.json`（**已加入 `.gitignore`，不会泄露凭据**）：
+
+```json
+{
+  "wifi": {
+    "ssid": "你的WiFi名称",
+    "password": "你的WiFi密码"
+  }
+}
+```
+
+MQTT Broker 地址自动从 `mqtt-config.json` 读取，无需重复填写。
+
+### 2. 生成头文件
+
+```bash
+node generate-firmware-config.js
+```
+
+这会在 `firmware/ai-led-firmware/` 下生成 `firmware-config.h`，固件编译时自动嵌入。
+
+> 如果 `firmware-config.json` 不存在，生成的头文件为空值，固件会回退到 AP 配网模式。
+
+### 3. 编译并烧录
+
+```bash
+node generate-firmware-config.js
+arduino-cli compile --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/ai-led-firmware.ino
+```
+
+> **注意**：`firmware-config.json` 和 `firmware-config.h` 均已在 `.gitignore` 中，不会被提交到仓库。
+
 ## WiFi 配网
 
 ![配网界面](pic/配网界面.jpg)
@@ -401,7 +439,7 @@ opencode-led/
 | `session.diff` | thinking | 文件变更 |
 | `session.status` | 心跳→done→idle | 状态轮询 |
 | `session.idle` | done | 会话空闲 |
-| `session.error` | error | 出错 |
+| `session.error` | done | 会话中断（用户停止/异常） |
 | `tool.execute.before/after` | thinking | 执行工具 |
 
 ### Claude Code 事件
