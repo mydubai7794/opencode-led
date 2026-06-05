@@ -11,8 +11,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let client = null;
 let brokerServer = null;
-let idleTimer = null;
-let doneTimer = null;
 let debounceTimer = null;
 let msgCount = 0;
 let lastWinnerState = "";
@@ -20,17 +18,12 @@ let isSessionActive = false;
 let pendingDoneTimer = null;
 let suppressThinkingUntil = 0;
 let subagentDepth = 0;
-let heartbeatTimer = null;
-const HEARTBEAT_MS = 60_000;
-const ACTIVE_STATES = new Set(["thinking", "auth_required"]);
 const projectStates = new Map();
 
 const TOPIC = "ai-led/state";
 const PROJECT_TOPIC = "ai-led/project";
 const ALIVE_TOPIC = "ai-led/alive";
 const LOG_FILE = path.join(os.tmpdir(), "ai-led-events.log");
-const DONE_TIMEOUT = 10_000;
-const IDLE_TIMEOUT = 60_000;
 const DEBOUNCE_MS = 300;
 const PENDING_DONE_MS = 1500;
 const SUPPRESS_MS = 500;
@@ -166,49 +159,18 @@ function handleProjectMessage(topic, message) {
     if (!pid || !state) return;
     projectStates.set(pid, { state, ts: data.ts });
     const winner = computeWinner();
-    if (winner && winner.state !== lastWinnerState) {
+    if (!winner) return;
+    if (winner.state !== lastWinnerState) {
       lastWinnerState = winner.state;
-      clearTimeout(idleTimer);
-      clearTimeout(doneTimer);
+      const now = Date.now();
       const payload = JSON.stringify({
         state: winner.state,
-        ts: Date.now(),
+        ts: now,
         source: winner.pid,
       });
       const c = getClient();
       c.publish(TOPIC, payload, { qos: 1, retain: true });
       log(`[coordinator] winner=${winner.state} from=${winner.pid} total_projects=${projectStates.size}`);
-      if (winner.state === "done") {
-        doneTimer = setTimeout(() => {
-          if (isSessionActive) return;
-          const pidsToDelete = [];
-          for (const [pid, info] of projectStates) {
-            if (info.state === "done") pidsToDelete.push(pid);
-          }
-          for (const pid of pidsToDelete) projectStates.delete(pid);
-          lastWinnerState = "idle";
-          const c2 = getClient();
-          c2.publish(TOPIC, JSON.stringify({ state: "idle", ts: Date.now() }), { qos: 1, retain: true });
-          log(`[coordinator] done→idle timeout, cleared ${pidsToDelete.length} done projects`);
-        }, IDLE_TIMEOUT);
-      }
-    }
-    if (winner && ACTIVE_STATES.has(winner.state)) {
-      clearTimeout(heartbeatTimer);
-      heartbeatTimer = setTimeout(() => {
-        heartbeatTimer = null;
-        const w = computeWinner();
-        if (w && ACTIVE_STATES.has(w.state)) {
-          const c = getClient();
-          c.publish(TOPIC, JSON.stringify({
-            state: w.state, ts: Date.now(), source: w.pid,
-          }), { qos: 1, retain: true });
-          log(`[heartbeat] re-publish ${w.state}`);
-        }
-      }, HEARTBEAT_MS);
-    } else {
-      clearTimeout(heartbeatTimer);
-      heartbeatTimer = null;
     }
   } catch (e) {
     log("协调消息处理错误: " + e.message);
@@ -226,7 +188,6 @@ function activateSession(eventDetail) {
     return false;
   }
   cancelPendingDone();
-  clearTimeout(doneTimer);
   isSessionActive = true;
   suppressThinkingUntil = 0;
   return true;
@@ -238,7 +199,6 @@ function markThinking(eventDetail) {
     return;
   }
   cancelPendingDone();
-  clearTimeout(doneTimer);
   isSessionActive = true;
   if (debounceTimer) return;
   publishProject("thinking", eventDetail);
@@ -246,12 +206,8 @@ function markThinking(eventDetail) {
 }
 
 function cleanup() {
-  clearTimeout(idleTimer);
-  clearTimeout(doneTimer);
   clearTimeout(debounceTimer);
   clearTimeout(pendingDoneTimer);
-  clearTimeout(heartbeatTimer);
-  heartbeatTimer = null;
   isSessionActive = false;
   subagentDepth = 0;
   if (client) {
@@ -308,7 +264,6 @@ export const AiLedPlugin = async () => {
         case "session.idle":
           if (isSessionActive) {
             isSessionActive = false;
-            clearTimeout(doneTimer);
             cancelPendingDone();
             if (subagentDepth > 0) {
               log(`[session.idle] subagentDepth=${subagentDepth}, skipping done`);
@@ -323,21 +278,11 @@ export const AiLedPlugin = async () => {
           break;
         case "session.error":
           cancelPendingDone();
-          clearTimeout(doneTimer);
           isSessionActive = false;
           suppressThinkingUntil = 0;
-          publishProject("error", "session.error");
+          publishProject("done", "session.error");
           break;
         case "session.status":
-          clearTimeout(idleTimer);
-          clearTimeout(doneTimer);
-          doneTimer = setTimeout(() => {
-            if (isSessionActive) {
-              isSessionActive = false;
-              cancelPendingDone();
-              publishProject("done", "no-event timeout");
-            }
-          }, DONE_TIMEOUT);
           break;
         default:
           log(`event: ${event.type}`);

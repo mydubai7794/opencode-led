@@ -4,9 +4,7 @@
 #define BUTTON_PIN     0
 #define EEPROM_SIZE    512
 #define CONFIG_VALID   0xA5
-#define PWM_RANGE      1023
-#define PWM_FREQ       1000
-#define MSG_TIMEOUT    180000
+#define STATE_OFF_TIMEOUT 180000
 
 #include <ESP8266WiFi.h>
 #include <DNSServer.h>
@@ -33,7 +31,7 @@ struct Config {
 
 Config cfg;
 char currentState[20] = "idle";
-unsigned long lastMsgTime = 0;
+unsigned long stateStartTime = 0;
 bool apMode = false;
 bool buttonPressed = false;
 
@@ -198,11 +196,11 @@ void updateLED() {
 }
 
 void setState(const char* state) {
-  lastMsgTime = millis();
   if (strcmp(currentState, state) != 0) {
     strncpy(currentState, state, sizeof(currentState) - 1);
     currentState[sizeof(currentState) - 1] = 0;
     doneActive = false;
+    stateStartTime = millis();
   }
 }
 
@@ -340,11 +338,11 @@ void loop() {
     reconnectMQTT();
   }
   mqtt.loop();
-  if (lastMsgTime > 0 && millis() - lastMsgTime > MSG_TIMEOUT) {
-    bool canTurnOff = strcmp(currentState, "idle") == 0 || strcmp(currentState, "done") == 0;
-    if (canTurnOff && strcmp(currentState, "off") != 0) {
-      setState("off");
-      Serial.println("[AI-LED] Inactive for 3min, LED off");
+  if (strcmp(currentState, "done") == 0 || strcmp(currentState, "idle") == 0) {
+    if (millis() - stateStartTime > STATE_OFF_TIMEOUT) {
+      strncpy(currentState, "off", sizeof(currentState) - 1);
+      currentState[sizeof(currentState) - 1] = 0;
+      Serial.println("[AI-LED] done/idle 3min, LED off");
     }
   }
   updateLED();
