@@ -150,7 +150,9 @@ npm run daemon:status  # 查看运行状态
 
 ### 2. 配置 MQTT 模式
 
-编辑 `mqtt-config.json`，默认使用本地模式：
+在项目根目录创建 `mqtt-config.json`（**已在 `.gitignore` 中，不会泄露凭据**），`install.sh` 安装时会自动复制到 `~/.config/opencode/plugins/` 目录。
+
+> **local 模式**（局域网）只需要 `wifi` 和 `local` 即可，`remote` 部分可不填。
 
 ```json
 {
