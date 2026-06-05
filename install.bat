@@ -24,6 +24,16 @@ if not exist "%PLUGINS_DIR%" mkdir "%PLUGINS_DIR%"
 copy /Y "%DIR%opencode-plugin.js" "%PLUGINS_DIR%\ai-led.js" >nul
 echo 已复制插件到 %PLUGINS_DIR%\ai-led.js
 
+if exist "%DIR%mqtt-config.json" (
+    copy /Y "%DIR%mqtt-config.json" "%PLUGINS_DIR%\mqtt-config.json" >nul
+    echo 已复制配置到 %PLUGINS_DIR%\mqtt-config.json
+) else (
+    if not exist "%PLUGINS_DIR%\mqtt-config.json" (
+        copy /Y "%DIR%mqtt-config.json.example" "%PLUGINS_DIR%\mqtt-config.json" >nul
+        echo 已创建默认配置 %PLUGINS_DIR%\mqtt-config.json（请编辑填入实际连接信息）
+    )
+)
+
 echo.
 echo === 安装完成 ===
 echo 重启 opencode 即可使用，LED 指示灯将自动工作

@@ -1,0 +1,17 @@
+{
+  "mode": "local",
+  "wifi": {
+    "ssid": "你的WiFi名称",
+    "password": "你的WiFi密码"
+  },
+  "local": {
+    "host": "127.0.0.1",
+    "port": 1883
+  },
+  "remote": {
+    "host": "your-broker-ip",
+    "port": 1883,
+    "username": "",
+    "password": ""
+  }
+}

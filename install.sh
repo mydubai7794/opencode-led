@@ -26,6 +26,9 @@ echo "已复制插件到 $PLUGINS_DIR/ai-led.js"
 if [ -f "$DIR/mqtt-config.json" ]; then
   cp "$DIR/mqtt-config.json" "$PLUGINS_DIR/mqtt-config.json"
   echo "已复制配置到 $PLUGINS_DIR/mqtt-config.json"
+elif [ ! -f "$PLUGINS_DIR/mqtt-config.json" ]; then
+  cp "$DIR/mqtt-config.json.example" "$PLUGINS_DIR/mqtt-config.json"
+  echo "已创建默认配置 $PLUGINS_DIR/mqtt-config.json（请编辑填入实际连接信息）"
 fi
 
 echo ""
