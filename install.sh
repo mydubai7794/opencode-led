@@ -23,6 +23,11 @@ mkdir -p "$PLUGINS_DIR"
 cp "$DIR/opencode-plugin.js" "$PLUGINS_DIR/ai-led.js"
 echo "已复制插件到 $PLUGINS_DIR/ai-led.js"
 
+if [ -f "$DIR/mqtt-config.json" ]; then
+  cp "$DIR/mqtt-config.json" "$PLUGINS_DIR/mqtt-config.json"
+  echo "已复制配置到 $PLUGINS_DIR/mqtt-config.json"
+fi
+
 echo ""
 echo "=== 安装完成 ==="
 echo "重启 opencode 即可使用，LED 指示灯将自动工作"

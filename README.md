@@ -155,6 +155,10 @@ npm run daemon:status  # 查看运行状态
 ```json
 {
   "mode": "local",
+  "wifi": {
+    "ssid": "你的WiFi名称",
+    "password": "你的WiFi密码"
+  },
   "local": {
     "host": "127.0.0.1",
     "port": 1883
@@ -171,6 +175,7 @@ npm run daemon:status  # 查看运行状态
 | 字段 | 说明 |
 |------|------|
 | `mode` | `"local"` 或 `"remote"` |
+| `wifi` | WiFi 凭据，编译固件时使用（插件忽略此字段） |
 | `local.host/port` | 本地内嵌 Broker 地址（local 模式使用） |
 | `remote.host/port` | 远程 Mosquitto Broker 地址（remote 模式使用） |
 | `remote.username/password` | 远程 Broker 认证凭据（remote 模式必填） |
@@ -321,41 +326,43 @@ arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/
 
 ## 固件本地配置（跳过配网）
 
-调试固件时，每次烧录后都要重新配网很麻烦。项目支持通过本地配置文件将 WiFi 和 MQTT 凭据**编译进固件**，烧录即用，无需配网。
+调试固件时，每次烧录后都要重新配网很麻烦。项目支持将 WiFi 和 MQTT 凭据**编译进固件**，烧录即用，无需配网。
 
-### 1. 创建 `firmware-config.json`
-
-在项目根目录创建 `firmware-config.json`（**已加入 `.gitignore`，不会泄露凭据**）：
+所有配置集中在 `mqtt-config.json` 一个文件中，只需添加 `wifi` 字段：
 
 ```json
 {
+  "mode": "local",
   "wifi": {
     "ssid": "你的WiFi名称",
     "password": "你的WiFi密码"
+  },
+  "local": {
+    "host": "127.0.0.1",
+    "port": 1883
+  },
+  "remote": {
+    "host": "your-broker-ip",
+    "port": 1883,
+    "username": "",
+    "password": ""
   }
 }
 ```
 
-MQTT Broker 地址自动从 `mqtt-config.json` 读取，无需重复填写。
+- **插件**：只读 `mode` + `local`/`remote`，忽略 `wifi` 字段
+- **固件编译**：`generate-firmware-config.js` 读取 `wifi` + 对应模式的 MQTT 配置，生成 `firmware-config.h` 编译进固件
+- **`install.sh`** 会自动将 `mqtt-config.json` 复制到插件目录
 
-### 2. 生成头文件
-
-```bash
-node generate-firmware-config.js
-```
-
-这会在 `firmware/ai-led-firmware/` 下生成 `firmware-config.h`，固件编译时自动嵌入。
-
-> 如果 `firmware-config.json` 不存在，生成的头文件为空值，固件会回退到 AP 配网模式。
-
-### 3. 编译并烧录
+### 编译流程
 
 ```bash
 node generate-firmware-config.js
 arduino-cli compile --fqbn esp32:esp32:esp32c3 firmware/ai-led-firmware/ai-led-firmware.ino
 ```
 
-> **注意**：`firmware-config.json` 和 `firmware-config.h` 均已在 `.gitignore` 中，不会被提交到仓库。
+> 如果 `mqtt-config.json` 不存在或没有 `wifi` 字段，固件回退到 AP 配网模式。
+> `mqtt-config.json` 已在 `.gitignore` 中，**不会被提交到仓库**。
 
 ## WiFi 配网
 

@@ -1,6 +1,5 @@
 node_modules/
 mqtt-config.json
-firmware-config.json
 firmware/ai-led-firmware/firmware-config.h
 *.pid
 *.log
