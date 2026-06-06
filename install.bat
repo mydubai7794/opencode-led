@@ -6,10 +6,11 @@ set "DIR=%~dp0"
 set "OPENCODE_DIR=%USERPROFILE%\.config\opencode"
 set "PLUGINS_DIR=%OPENCODE_DIR%\plugins"
 
-if not exist "%OPENCODE_DIR%" (
-    echo 错误: 未找到 OpenCode 配置目录 (%OPENCODE_DIR%)
-    echo 请先安装并运行一次 opencode
-    exit /b 1
+if not exist "%OPENCODE_DIR%" mkdir "%OPENCODE_DIR%"
+
+if not exist "%OPENCODE_DIR%\opencode.json" if not exist "%OPENCODE_DIR%\opencode.jsonc" (
+    echo 警告: 未找到 opencode 配置文件，将创建最小配置
+    echo {} > "%OPENCODE_DIR%\opencode.json"
 )
 
 if not exist "%OPENCODE_DIR%\package.json" (
