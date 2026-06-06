@@ -486,6 +486,7 @@ Claude Code 通过 hooks 系统触发外部脚本，daemon 管理 HTTP 接口、
 8. **ESP32-C3 USB-Serial/JTAG 不支持应用层串口命令** — 打开串口时 DTR 信号翻转会复位芯片，PING/RESET 等文本命令在 ROM bootloader 阶段丢失；重置配网改用 esptool 擦除 flash + 重烧固件的方式
 9. **Claude Code hooks 是无状态外部进程** — 每次 hook 触发 spawn 一个新进程，不能直接持有 MQTT 连接；用常驻 daemon + 轻量 hook 脚本架构，hook 通过 HTTP 转发事件到 daemon
 10. **Windows Hyper-V 会保留端口范围** — daemon 首选端口可能被 EADDRINUSE/EACCES 拒绝，`findFreePort` 自动递增尝试最多 20 个端口，实际端口写入 `PORT_FILE` 供 hook 脚本发现
+11. **GitHub Release 固件不能携带 hardcoded WiFi/MQTT 配置** — 发布的固件 bin 文件必须不带 `wifi` 字段编译（即 AP 配网模式），否则会泄露用户凭据；hardcoded 配置仅用于本地开发调试，通过 `mqtt-config.json`（已在 `.gitignore` 中）编译进固件
 
 ## 友情链接
 
